@@ -19,14 +19,14 @@ def ensure_repo_cloned(repo_path: str, repo_url: str, branch: str) -> Path:
     local = Path(repo_path)
     
     if local.exists() and (local / ".git").exists():
-        print(f"🔄 Pulling latest {branch} branch...")
+        print(f"  Pulling latest {branch} branch...")
         subprocess.run(
             ["git", "-C", str(local), "pull", "origin", branch],
             check=True,
             capture_output=True
         )
     else:
-        print(f"📥 Cloning {repo_url} (branch: {branch}) to {local}...")
+        print(f"  Cloning {repo_url} (branch: {branch}) to {local}...")
         subprocess.run(
             ["git", "clone", "--depth", "1", "-b", branch, repo_url, str(local)],
             check=True
@@ -44,10 +44,10 @@ def main():
     
     # Ensure repo is available locally
     repo_path = ensure_repo_cloned(args.repo_path, args.repo_url, args.branch)
-    print(f"📂 Repository ready at: {repo_path}")
+    print(f"  Repository ready at: {repo_path}")
     
     # Parse documentation
-    print(f"\n🔍 Parsing documentation...")
+    print(f"\n  Parsing documentation...")
     dataset = parse_and_categorize(str(repo_path))
     
     total = sum(len(v) for v in dataset.values())
@@ -57,14 +57,14 @@ def main():
         md_count = len(list(repo_path.rglob("*.md")))
         print(f"   .md files found: {md_count}")
         if md_count > 0:
-            print("   💡 Check data_pipeline.py categorization logic")
+            print("     Check data_pipeline.py categorization logic")
         raise RuntimeError("Ingestion failed: empty dataset")
     
     # Index into ChromaDB
-    print(f"\n🔢 Indexing {total} chunks...")
+    print(f"\n  Indexing {total} chunks...")
     index_data(dataset, force=args.force)
     
-    print(f"\n✅ Ingestion complete. RAG pipeline ready.")
+    print(f"\n  Ingestion complete. RAG pipeline ready.")
     print(f"   • API chunks: {len(dataset['api'])}")
     print(f"   • Code chunks: {len(dataset['code'])}")
     print(f"   • Docs chunks: {len(dataset['docs'])}")
