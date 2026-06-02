@@ -9,3 +9,10 @@ wheels/
 
 # Virtual environments
 .venv
+
+# chromaDB
+chroma_db/
+chroma.sqlite3
+
+# Docs auto-downloaded from repo
+ServiceNowDocs-australia/

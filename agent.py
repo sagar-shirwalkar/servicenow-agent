@@ -1,89 +1,112 @@
+#!/usr/bin/env python3
+"""
+ReAct agent with cross-topic workflow synthesis capabilities.
+Uses directory-aware RAG and fine-tuned model for ServiceNow development.
+"""
+
 import ollama
 import json
-from rag_system import retrieve_context
+from rag_system import retrieve_context, retrieve_cross_topic
 
-
-#
-# Agent Orchestration (Plan, Build, OpenAPI)
-# We will build a ReAct (Reason + Act) agent using Ollama's native Tool Calling feature. 
-# Qwen 2.5 and Llama 3.1 support this natively, eliminating the need for heavy frameworks like LangChain.
-# 
-
-
-# Define Tools for the Agent
 TOOLS = [
     {
         "type": "function",
         "function": {
             "name": "search_servicenow_docs",
-            "description": "Search the ServiceNow documentation for APIs, code patterns, or concepts.",
+            "description": "Search ServiceNow documentation. Use for single-topic queries.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "The search query."}
+                    "query": {"type": "string"},
+                    "category": {"type": "string", "enum": ["api", "code", "docs"]},
+                    "topic": {"type": "string", "description": "Specific topic like 'it service management'"}
                 },
                 "required": ["query"]
             }
         }
     },
     {
-        "type": "function",
+        "type": "function", 
         "function": {
-            "name": "validate_openapi_json",
-            "description": "Validates if a generated JSON payload conforms to standard REST/OpenAPI structures.",
+            "name": "synthesize_cross_topic_workflow",
+            "description": "Synthesize workflows spanning multiple ServiceNow topics. Use for complex planning tasks.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "payload": {"type": "string", "description": "The JSON string to validate."}
+                    "goal": {"type": "string", "description": "The workflow goal to achieve"},
+                    "topics": {"type": "array", "items": {"type": "string"}, "description": "List of topics to synthesize"}
                 },
-                "required": ["payload"]
+                "required": ["goal", "topics"]
             }
         }
     }
 ]
 
-def run_agent(user_prompt: str):
+def run_agent(user_prompt: str, model: str = "servicenow-expert"):
     messages = [
         {
-            "role": "system", 
-            "content": "You are an expert ServiceNow AI Agent. Your workflow: 1. PLAN your approach. 2. USE TOOLS to gather context. 3. BUILD the final code or OpenAPI spec. Always output valid JSON or Markdown code blocks."
+            "role": "system",
+            "content": """You are an expert ServiceNow AI Agent for application development.
+            
+WORKFLOW:
+1. ANALYZE: Determine if the request is single-topic or requires cross-topic synthesis.
+2. RETRIEVE: Use appropriate tool to gather context.
+3. SYNTHESIZE: Combine retrieved knowledge with your fine-tuned expertise.
+4. OUTPUT: Generate production-ready code, OpenAPI specs, or workflow plans.
+
+RULES:
+- Always cite source topics in your response.
+- For code: include error handling and follow ServiceNow best practices.
+- For APIs: output valid JSON conforming to OpenAPI 3.0.
+- When uncertain, retrieve more context before answering."""
         },
         {"role": "user", "content": user_prompt}
     ]
     
-    # Agent Loop
     while True:
+        # --- ADD HISTORY PRUNING HERE ---
+        # Keep System (0), User (1), and the last 8 messages.
+        # This prevents infinite context growth during complex multi-step planning.
+        if len(messages) > 10:
+            messages = [messages[0], messages[1]] + messages[-8:]
+            
         response = ollama.chat(
-            model="servicenow-expert", # Our fine-tuned model
+            model=model,
             messages=messages,
-            tools=TOOLS
+            tools=TOOLS,
+            options={"temperature": 0.1, "num_predict": 2048, "num_ctx": 32768}
         )
         
         messages.append(response.message)
         
-        # If the model decides to use a tool
         if response.message.tool_calls:
-            for tool in response.message.tool_calls:
-                if tool.function.name == "search_servicenow_docs":
-                    query = tool.function.arguments['query']
-                    context = retrieve_context(query)
-                    # Feed tool result back to the model
+            for tool_call in response.message.tool_calls:
+                func = tool_call.function
+                args = json.loads(func.arguments) if isinstance(func.arguments, str) else func.arguments
+                
+                if func.name == "search_servicenow_docs":
+                    context = retrieve_context(
+                        args["query"],
+                        category_filter=args.get("category"),
+                        topic_filter=args.get("topic")
+                    )
                     messages.append({
                         "role": "tool",
                         "content": context,
-                        "name": tool.function.name
+                        "name": func.name,
+                        "tool_call_id": tool_call.id
                     })
-                elif tool.function.name == "validate_openapi_json":
-                    # Simple mock validation logic
-                    try:
-                        json.loads(tool.function.arguments['payload'])
-                        result = "Valid JSON"
-                    except:
-                        result = "Invalid JSON"
-                    messages.append({"role": "tool", "content": result, "name": tool.function.name})
+                    
+                elif func.name == "synthesize_cross_topic_workflow":
+                    context = retrieve_cross_topic(
+                        args["goal"],
+                        topics=args["topics"]
+                    )
+                    messages.append({
+                        "role": "tool", 
+                        "content": context,
+                        "name": func.name,
+                        "tool_call_id": tool_call.id
+                    })
         else:
-            # No tool calls, the agent has generated its final answer
             return response.message.content
-
-# Example Usage:
-# print(run_agent("Write a Python script to fetch all active incidents using the Table API."))
