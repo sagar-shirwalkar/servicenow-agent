@@ -1,0 +1,14 @@
+[project]
+name = "servicenow-agent"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "chromadb>=1.5.9",
+    "markdown-it-py>=4.2.0",
+    "mcp>=1.27.2",
+    "ollama>=0.6.2",
+    "pydantic>=2.13.4",
+    "unsloth>=2026.5.10",
+]
