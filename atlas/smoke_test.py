@@ -1,5 +1,10 @@
 """End-to-end smoke test for the bundle pipeline.
 
+Builds a 20-file bundle into a tempdir, loads it via the same code
+path `atlas.rag_server` uses, and runs a real semantic search for
+"incident." Catches the obvious failures (broken chunker, broken
+embedder, broken Parquet) in ~90 seconds.
+
 Builds a tiny bundle from a handful of files, loads it via the
 same code path ``atlas.rag_server`` uses, and runs a semantic
 search to confirm the round-trip works. Runs in 1-2 minutes on

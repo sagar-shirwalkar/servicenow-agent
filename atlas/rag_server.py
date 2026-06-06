@@ -1,15 +1,23 @@
 """MCP server exposing the pre-built ServiceNow RAG bundle.
 
+Four tools: `search_docs`, `search_code`, `get_chunk`,
+`get_bundle_info`. Loads the bundle once at startup into memory,
+answers queries with cosine similarity over a single matrix
+multiply. Returns chunks with file paths, headings, similarity
+scores, and provenance.
+
 Reads the portable bundle produced by ``make_bundle.py`` and answers
 semantic-search queries by:
-  1. Embedding the query with the bundled ONNX model.
+  1. Embedding the query with the embedder resolved at startup
+     (Apple MLX on M-series, ONNX+CUDA on NVIDIA Linux boxes,
+     ONNX+CPU everywhere else; see ``atlas/embed/base.py``).
   2. Computing cosine similarity against the precomputed matrix.
   3. Returning the top-k chunks with their metadata.
 
 The bundle is loaded once at startup. Bundle format (see
-``make_bundle.py``) is platform-agnostic; at runtime on Apple
-Silicon we request the CoreML execution provider for ANE
-acceleration, falling back to CPU elsewhere.
+``make_bundle.py``) is platform-agnostic: only the inference runtime
+differs between backends, not the vectors. See ``atlas-doctor`` for
+which backend was selected at build and at run time.
 """
 
 from __future__ import annotations
@@ -189,7 +197,7 @@ async def list_tools() -> list[Tool]:
 
 
 @app.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     try:
         bundle = _bundle_cache(ARGS.bundle, ARGS.prefer)
     except FileNotFoundError as e:
@@ -229,15 +237,19 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     raise ValueError(f"Unknown tool: {name}")
 
 
+_bundle_instance: Bundle | None = None
+
+
 def _bundle_cache(bundle_arg: str, prefer: str) -> Bundle:
-    if not hasattr(_bundle_cache, "_instance"):
+    global _bundle_instance
+    if _bundle_instance is None:
         bundle_path = Path(bundle_arg).expanduser()
         if not bundle_path.is_absolute():
             bundle_path = bundle_path.resolve()
         backend, reason = resolve_backend(prefer)
         print(f"  RAG backend: {backend} ({reason})", file=sys.stderr)
-        _bundle_cache._instance = Bundle(bundle_path, prefer=prefer)
-    return _bundle_cache._instance
+        _bundle_instance = Bundle(bundle_path, prefer=prefer)
+    return _bundle_instance
 
 
 def parse_args() -> argparse.Namespace:

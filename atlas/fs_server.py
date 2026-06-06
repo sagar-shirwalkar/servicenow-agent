@@ -1,5 +1,9 @@
 """MCP server exposing the ServiceNowDocs repo as a navigable filesystem.
 
+Five tools: `list_publications`, `list_files`, `read_file`, `search`,
+`get_release_info`. All deterministic, all backed by file I/O and
+`ripgrep`. No model. No state. Drop-in for any markdown repo.
+
 Five tools, no models, no embeddings. Backed by a local ``git clone``
 of the docs repo plus ripgrep for full-text search. This is the
 "give the model the link" surface - deterministic, zero-infra,

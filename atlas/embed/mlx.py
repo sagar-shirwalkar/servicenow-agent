@@ -17,9 +17,13 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 from transformers import AutoTokenizer
+
+if TYPE_CHECKING:
+    import mlx.core as mx
 
 from .base import (
     EMBEDDING_DIM,
@@ -178,7 +182,7 @@ def _load_mlx_weights(model: BgeModel, weights_path: Path) -> None:
     """
     mx, _ = _import_mlx()
 
-    def _npy(name: str) -> "mx.array":
+    def _npy(name: str) -> mx.array:
         arr = np.load(weights_path / f"{name}.npy")
         return mx.array(arr)
 
@@ -262,7 +266,7 @@ class MlxEmbedder(Embedder):
         mx.eval(_)
         self._warmup_done = True
 
-    def _forward(self, texts: list[str]) -> "mx.array":
+    def _forward(self, texts: list[str]) -> mx.array:
         mx, _ = _import_mlx()
         encoded = self.tokenizer(
             texts,

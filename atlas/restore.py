@@ -1,5 +1,9 @@
 """Restore a previously snapshotted RAG bundle.
 
+Operational pair with `atlas/backup.py`. Lists, picks, and swaps
+back. `restore.py` itself snapshots the current bundle as a safety
+net before swapping, unless `--no-safety-snapshot` is set.
+
 Lists available snapshots, lets the user pick one (or accepts
 ``--latest``), snapshots the current bundle as a safety net, and
 replaces it with the chosen snapshot.

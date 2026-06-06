@@ -1,5 +1,14 @@
 """Embedding backends for the ServiceNow Atlas bundle.
 
+Chunks → vectors. A small package with one ABC (`Embedder`) and two
+backends: `OnnxEmbedder` (portable, ONNX+CPU floor, supports CUDA via
+`--prefer nvidia` if `onnxruntime-gpu` is installed) and `MlxEmbedder`
+(Apple Silicon, hand-rolled BGE loaded from
+`~/.cache/atlas/models/bge-base-en-v1.5-mlx/`). `get_embedder()` is
+the factory; `resolve_backend()` is the probe used by `atlas-doctor`.
+Both backends share `mean_pool`, `l2_normalize`, `load_embeddings`,
+and a 3-attempt exponential-backoff retry wrapper.
+
 The bundle is backend-agnostic (just float16 vectors). The runtime
 inference can run on:
 

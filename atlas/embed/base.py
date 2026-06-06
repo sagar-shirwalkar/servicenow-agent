@@ -168,7 +168,7 @@ def resolve_backend(prefer: str | None = None) -> tuple[str, str]:
     return "onnx-cpu", "no fast path available; using portable ONNX+CPU"
 
 
-def get_embedder(model_id: str, prefer: str | None = None) -> "Embedder":
+def get_embedder(model_id: str | Path, prefer: str | None = None) -> "Embedder":
     """Construct an :class:`Embedder` for the best available backend.
 
     ``model_id`` can be a Hugging Face model id (``"Xenova/bge-base-en-v1.5"``)

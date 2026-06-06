@@ -1,5 +1,12 @@
 """Convert Hugging Face BGE weights to MLX-loadable .npy files.
 
+One-time helper. Reads the `BAAI/bge-base-en-v1.5` PyTorch state
+dict and writes 197 `.npy` weight files to
+`~/.cache/atlas/models/bge-base-en-v1.5-mlx/`. Run this once per
+machine (or once per maintainer) to populate the MLX weights cache.
+The conversion is a key rename, not a retraining: MLX and ONNX
+produce bit-identical embeddings for every input we tested.
+
 The hand-rolled BGE model in ``atlas/embed/mlx.py`` uses vanilla
 BERT keys with single-letter prefixes. The Hugging Face checkpoint
 uses HuggingFace's own naming (``encoder.layer.0.attention.self.query``,

@@ -1,3 +1,8 @@
+# Monthly cron + manual dispatch + push-to-main. Runs `atlas-build`
+# on a Linux runner, smoke-tests, and publishes a new GitHub Release
+# with the bundle tarball. The release tag is `australia-YYYYMMDD`
+# so users can pin to a specific ServiceNow release family.
+
 name: build-bundle
 
 on:

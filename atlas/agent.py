@@ -1,5 +1,13 @@
 """Reasoning agent that consumes the Atlas MCP servers (planned).
 
+*Planned.* See [Roadmap](../README.md#7-roadmap) in the README for the
+placeholder's eventual shape. Will likely be a thin local CLI that
+wraps the two MCP servers for users who don't have an IDE with MCP
+support (`atlas-agent "find docs about SLA breaches"`), plus
+pre-built tool-use prompt templates tuned for ServiceNow tasks and a
+planner that fans a question out to `atlas-fs` + `atlas-rag` in
+parallel.
+
 The original prototype in this project used a hand-rolled ReAct loop
 against Ollama. The new design delegates reasoning to whichever
 agent the user already runs in their IDE (opencode, Zed, Claude

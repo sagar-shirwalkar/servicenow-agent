@@ -1,5 +1,15 @@
 """Diagnostic probe for the ServiceNow Atlas installation.
 
+`atlas-doctor` console script. Probes the platform
+(`platform.system()`, `platform.machine()`), all available ONNX
+execution providers, whether `mlx` and `mlx-metal` are importable,
+whether the MLX weights cache exists, whether `nvidia-smi` is on
+PATH, whether the system has `ripgrep`, free disk, and optionally a
+bundle's `manifest.json` and SHAs. Caches the result to
+`~/.cache/atlas/diagnosis.json` with a 24h TTL; re-run with
+`--refresh` to force. Always run this when something is wrong; the
+output is what tells you which backend will be selected and why.
+
 Run this once after ``uv sync`` and after any major upgrade. It
 checks the platform, probes each available backend, verifies the
 optional MLX weights cache, sanity-checks a bundle if one is

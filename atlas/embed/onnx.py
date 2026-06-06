@@ -15,9 +15,10 @@ from pathlib import Path
 import numpy as np
 import onnxruntime as ort
 from transformers import AutoTokenizer
-from transformers.utils import cached_file
+from transformers.utils.hub import cached_file
 
 from .base import (
+    EMBEDDING_DIM,
     Embedder,
     l2_normalize,
     mean_pool,
@@ -36,6 +37,10 @@ def _resolve_model_dir(model_dir: str | Path) -> Path:
     if p.is_dir():
         return p
     onnx = cached_file(model_dir, "onnx/model.onnx")
+    if onnx is None:
+        raise FileNotFoundError(
+            f"ONNX model not found in '{model_dir}' (file 'onnx/model.onnx' missing)"
+        )
     return Path(onnx).parent.parent
 
 
@@ -75,7 +80,7 @@ class OnnxEmbedder(Embedder):
 
     def embed(self, texts: list[str]) -> np.ndarray:
         if not texts:
-            return np.zeros((0, 768), dtype=np.float32)
+            return np.zeros((0, EMBEDDING_DIM), dtype=np.float32)
         encoded = self.tokenizer(
             texts,
             padding=True,
@@ -90,5 +95,12 @@ class OnnxEmbedder(Embedder):
         if "token_type_ids" in encoded:
             feed["token_type_ids"] = encoded["token_type_ids"]
         outputs = self.session.run(None, feed)
-        pooled = mean_pool(outputs[0], encoded["attention_mask"])
+        # session.run returns Sequence[Value] where Value is
+        # ndarray | SparseTensor | list | dict. The BGE model
+        # always returns last_hidden_state as an ndarray first.
+        hidden = outputs[0]
+        assert isinstance(hidden, np.ndarray), (
+            f"expected ndarray from BGE first output, got {type(hidden).__name__}"
+        )
+        pooled = mean_pool(hidden, encoded["attention_mask"])
         return l2_normalize(pooled)

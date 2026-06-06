@@ -1,5 +1,14 @@
 """Fine-tuning pipeline for a local ServiceNow model (planned).
 
+*Planned.* See [Roadmap](../README.md#7-roadmap) in the README.
+Will curate a dataset from the same RAG bundle used for retrieval
+(`chunks.parquet` is already the perfect input), train QLoRA
+adapters for Qwen 2.5 / 3.5 Coder, evaluate against the same
+tool-calling contracts the MCP servers use, and export to GGUF so
+the local model can sit alongside the RAG server in a
+fully-offline IDE setup. Target Apple Silicon via MLX, optionally
+NVIDIA via Unsloth.
+
 Atlas v0.1 shipped an Unsloth QLoRA script that was never actually
 run in the v0.1 → v0.2 transition (it was a system-prompt override
 on a base Qwen the whole time). The new architecture makes the

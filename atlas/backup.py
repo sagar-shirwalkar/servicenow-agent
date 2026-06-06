@@ -1,5 +1,8 @@
 """Snapshot the current RAG bundle so a new one can be safely installed.
 
+Operational pair with `atlas/restore.py`. Creates a timestamped
+tar.gz of the current bundle, prunes old snapshots past `--keep`.
+
 Snapshots are tar.gz archives of the bundle directory, named with
 a UTC timestamp. The default retention is 5; older snapshots are
 pruned automatically.

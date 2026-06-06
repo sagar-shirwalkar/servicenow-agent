@@ -1,5 +1,12 @@
 """Build a portable RAG bundle from the ServiceNowDocs repo.
 
+End-to-end bundle build. `git pull` the docs, walk every `.md`,
+chunk, embed, write `chunks.parquet` + `embeddings.f16.npy` +
+`norms.f32.npy` + `model/` + `manifest.json`. Records the pinned
+source SHA so re-runs are reproducible. Prints the chosen embedding
+backend and the reason for the choice. Accepts
+`--prefer {auto,apple,nvidia,cpu}`.
+
 Pipeline:
   1. ``git fetch`` the pinned ServiceNowDocs branch (default:
      ``australia``) into ``--repo-path``.

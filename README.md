@@ -87,33 +87,6 @@ all consume the same MCP servers and get the same knowledge.
 | **Distribution** | GitHub Releases (per-tag) | Simple, free, has a CLI-friendly API. End users download with one command. |
 | **Package management** | `uv` | Fast resolver, lockfile, virtualenv, build system. Stays consistent across Mac/Linux CI. |
 
-### What we explicitly do **not** use, and why
-
-- **No ChromaDB.** Not portable (version-coupled binary sqlite).
-  Bigger than the data it stores. No benefit at our scale.
-- **No Ollama.** The whole point of going ONNX is to avoid pulling
-  a quantized LLM and a daemon. The embedder is 110 M params and
-  runs in milliseconds on the ANE.
-- **No `torch` / `optimum` at runtime.** The Xenova repo ships
-  pre-exported ONNX. We use that. Saves ~2 GB of Python deps for
-  the consumer. (PyTorch is only needed once, by the maintainer
-  who runs `tools/convert_bge_to_mlx.py` to produce the MLX
-  weights.)
-- **No `markdown-it-py` AST parser.** H2 chunking is one regex.
-  An AST parser is overkill when the chunk boundary is literally
-  a line prefix.
-- **No fine-tuning (yet).** The local 9 B was never actually
-  fine-tuned in v1; the system prompt alone was doing all the
-  work. v2 removes the dead code path. See [Roadmap](#7-roadmap)
-  for when fine-tuning comes back.
-- **No CoreML by default.** The Apple Neural Engine is unreliable
-  for the BGE ONNX model: it reliably SIGKILLs on the second
-  inference batch when inputs are long (markdown chunks hit the
-  512-token cap), and when it does run it is 30-40x slower than
-  CPU due to ANE/CPU data marshalling. v0.3 replaces the ONNX
-  → CoreML bridge with [MLX](https://github.com/ml-explore/mlx),
-  which talks to the ANE directly and stays stable.
-
 ---
 
 ## 3. Project structure
@@ -159,105 +132,38 @@ servicenow-atlas/
     └── build-bundle.yml       Monthly CI build + GitHub Release
 ```
 
-### What each file does
-
-**`atlas/chunk.py`** — Markdown → chunks. Splits on `## ` headers,
-parses YAML frontmatter, flags code-containing chunks, falls back to
-paragraph splitting for oversized sections. No AST, no regex horrors.
-
-**`atlas/embed/`** — Chunks → vectors. A small package with one ABC
-(`Embedder`) and two backends: `OnnxEmbedder` (portable, ONNX+CPU
-floor, supports CUDA via `--prefer nvidia` if `onnxruntime-gpu` is
-installed) and `MlxEmbedder` (Apple Silicon, hand-rolled BGE loaded
-from `~/.cache/atlas/models/bge-base-en-v1.5-mlx/`). `get_embedder()`
-is the factory; `resolve_backend()` is the probe used by `atlas-doctor`.
-Both backends share `mean_pool`, `l2_normalize`, `load_embeddings`,
-and a 3-attempt exponential-backoff retry wrapper.
-
-**`tools/convert_bge_to_mlx.py`** — One-time helper. Reads the
-`BAAI/bge-base-en-v1.5` PyTorch state dict and writes 197 `.npy`
-weight files to `~/.cache/atlas/models/bge-base-en-v1.5-mlx/`. Run
-this once per machine (or once per maintainer) to populate the
-MLX weights cache. The conversion is a key rename, not a
-retraining: MLX and ONNX produce bit-identical embeddings for
-every input we tested.
-
-**`atlas/doctor.py`** — `atlas-doctor` console script. Probes the
-platform (`platform.system()`, `platform.machine()`), all available
-ONNX execution providers, whether `mlx` and `mlx-metal` are
-importable, whether the MLX weights cache exists, whether
-`nvidia-smi` is on PATH, whether the system has `ripgrep`, free
-disk, and optionally a bundle's `manifest.json` and SHAs. Caches
-the result to `~/.cache/atlas/diagnosis.json` with a 24h TTL;
-re-run with `--refresh` to force. Always run this when something
-is wrong; the output is what tells you which backend will be
-selected and why.
-
-**`atlas/make_bundle.py`** — End-to-end bundle build. `git pull` the
-docs, walk every `.md`, chunk, embed, write `chunks.parquet` +
-`embeddings.f16.npy` + `norms.f32.npy` + `model/` + `manifest.json`.
-Records the pinned source SHA so re-runs are reproducible. Prints
-the chosen embedding backend and the reason for the choice. Accepts
-`--prefer {auto,apple,nvidia,cpu}`.
-
-**`atlas/fs_server.py`** — Five tools: `list_publications`,
-`list_files`, `read_file`, `search`, `get_release_info`. All
-deterministic, all backed by file I/O and `ripgrep`. No model.
-No state. Drop-in for any markdown repo.
-
-**`atlas/rag_server.py`** — Four tools: `search_docs`, `search_code`,
-`get_chunk`, `get_bundle_info`. Loads the bundle once at startup
-into memory, answers queries with cosine similarity over a single
-matrix multiply. Returns chunks with file paths, headings,
-similarity scores, and provenance.
-
-**`atlas/download.py`** — End-user entry point. Hits the GitHub
-Releases API, downloads the asset, verifies the SHA256 of
-`chunks.parquet` against the manifest, extracts in place. If a
-bundle already exists at `--output`, snapshots it first via
-`backup.py` so a broken new bundle can be rolled back.
-
-**`atlas/backup.py`** / **`atlas/restore.py`** — Operational pair.
-`backup.py` creates a timestamped tar.gz of the current bundle,
-prunes old snapshots past `--keep`. `restore.py` lists, picks, and
-swaps back. `restore.py` itself snapshots the current bundle as a
-safety net before swapping, unless `--no-safety-snapshot` is set.
-
-**`atlas/smoke_test.py`** — Builds a 20-file bundle into a tempdir,
-loads it via the same code path `atlas.rag_server` uses, and runs a
-real semantic search for "incident." Catches the obvious failures
-(broken chunker, broken embedder, broken Parquet) in ~90 seconds.
-
-**`atlas/agent.py`** *(planned)* — The original prototype had a
-hand-rolled ReAct loop here. v2 deletes it: any model that speaks
-MCP is a valid client, so Atlas shouldn't ship its own. See
-[Roadmap](#7-roadmap) for the placeholder's eventual shape.
-
-**`atlas/training.py`** *(planned)* — Same story. The original
-Unsloth QLoRA script is gone; if/when it returns, it will use the
-RAG bundle's `chunks.parquet` as the training corpus, not the raw
-docs. See [Roadmap](#7-roadmap).
-
-**`.github/workflows/build-bundle.yml`** — Monthly cron + manual
-dispatch + push-to-main. Runs `atlas-build` on a Linux runner,
-smoke-tests, and publishes a new GitHub Release with the bundle
-tarball. The release tag is `australia-YYYYMMDD` so users can
-pin to a specific ServiceNow release family.
-
 ---
 
 ## 4. For users: install and use
 
 ### 4.1 Prerequisites
 
-- **macOS on Apple Silicon (M1 / M2 / M3 / M4 / M5).** Intel Macs
-  and non-Apple-Silicon machines will run the servers on CPU.
-  They will not get ANE acceleration.
 - **Python 3.11+** (3.12 or 3.13 recommended).
 - **[`uv`](https://docs.astral.sh/uv/)** for Python env management.
 - **[`ripgrep`](https://github.com/BurntSushi/ripgrep)** (`brew install ripgrep`).
 - **Git.**
 - ~1.5 GB of free disk for the bundle.
+
+> **Platforms.** Atlas runs on three classes of host, each picking a
+> different embedding backend by default:
+>
+> - **Apple Silicon (M1 / M2 / M3 / M4 / M5).** Default backend is
+>   [MLX](https://github.com/ml-explore/mlx), which talks to the
+>   Apple Neural Engine directly. ~1-2 ms per query. Install with
+>   `uv sync --extra mlx`. Intel Macs fall back to the ONNX+CPU
+>   floor; they run, just slower.
+> - **Linux x86_64 with an NVIDIA GPU.** Default backend is ONNX
+>   Runtime + CUDA. ~1-2 ms per query. Install with
+>   `uv sync --extra gpu`. v0.3 added this path; pre-v0.3
+>   explicitly skipped CUDA, which is why older notes say
+>   "no NVIDIA."
+> - **Anything else** (Linux/Windows without a GPU, Intel Mac, etc.)
+>   falls back to the portable ONNX+CPU floor. ~10-15 ms per
+>   query on a modern CPU. Always installed by default; no
+>   extra required.
+>
+> `atlas-doctor` will tell you which backend is selected on your
+> machine and why.
 
 ### 4.2 Install
 
@@ -589,11 +495,6 @@ probe result is cached at `~/.cache/atlas/diagnosis.json` for
 ---
 
 ## 7. Roadmap
-
-Atlas v0.1 had a hand-rolled ReAct agent (`agent.py`) and an
-Unsloth QLoRA fine-tuning script. Both were deleted in v0.2 because
-neither was doing useful work. The v0.2 plan is to bring them back
-in the right shape, using the new RAG bundle as the substrate.
 
 ### `atlas/agent.py` — the reasoning layer (planned)
 

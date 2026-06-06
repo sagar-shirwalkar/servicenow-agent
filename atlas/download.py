@@ -1,5 +1,11 @@
 """Download a pre-built RAG bundle from GitHub Releases.
 
+End-user entry point. Hits the GitHub Releases API, downloads the
+asset, verifies the SHA256 of `chunks.parquet` against the manifest,
+extracts in place. If a bundle already exists at `--output`,
+snapshots it first via `backup.py` so a broken new bundle can be
+rolled back.
+
 Resolves the latest (or pinned) release, downloads the bundle
 artifact, verifies its SHA256 against the manifest, and extracts
 it to ``--output``. If ``--output`` already has a bundle, the
