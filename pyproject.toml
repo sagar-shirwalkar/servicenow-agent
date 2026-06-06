@@ -1,14 +1,28 @@
 [project]
 name = "servicenow-agent"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.2.0"
+description = "Two-MCP-server knowledge layer for ServiceNow development: filesystem + portable RAG."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
+
 dependencies = [
-    "chromadb>=1.5.9",
-    "markdown-it-py>=4.2.0",
-    "mcp>=1.27.2",
-    "ollama>=0.6.2",
-    "pydantic>=2.13.4",
-    "unsloth>=2026.5.10",
+    "mcp>=1.0",
+    "pyyaml>=6.0",
+    "pyarrow>=15.0",
+    "numpy>=1.26",
+    "transformers>=4.40",
+    "tokenizers>=0.19",
+    "onnxruntime>=1.18",
+    "pandas>=2.2",
 ]
+
+[project.optional-dependencies]
+build = [
+    "tqdm>=4.66",
+]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.uv]
+package = false

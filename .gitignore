@@ -10,9 +10,19 @@ wheels/
 # Virtual environments
 .venv
 
-# chromaDB
+# Legacy chromaDB (replaced by portable bundle)
 chroma_db/
 chroma.sqlite3
 
-# Docs auto-downloaded from repo
+# Auto-downloaded docs source
 ServiceNowDocs-australia/
+
+# Pre-built RAG bundle (downloaded or built locally)
+servicenow-rag-bundle/
+*.tar.gz
+*.tar.zst
+*.zip
+
+# Hugging Face model cache
+hf_cache/
+.cache/
