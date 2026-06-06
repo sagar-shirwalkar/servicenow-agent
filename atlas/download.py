@@ -105,7 +105,7 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def main() -> int:
+def _run() -> int:
     args = parse_args()
     backup_root = args.backup_dir or (args.output / ".backups")
     if args.output.exists():
@@ -160,5 +160,16 @@ def main() -> int:
     return 0
 
 
+def main() -> None:
+    """Script entry point.
+
+    Calls ``sys.exit(_run())`` so the return code propagates through
+    both ``python -m`` and the console-script entry points defined
+    in ``pyproject.toml``. Console scripts do not propagate return
+    values on their own, so the ``sys.exit`` has to live here.
+    """
+    sys.exit(_run())
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

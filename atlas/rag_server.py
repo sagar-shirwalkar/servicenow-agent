@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -26,14 +27,20 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
-from embed import Embedder, load_embeddings
+from .embed import (
+    DEFAULT_MODEL_ID,
+    Embedder,
+    get_embedder,
+    load_embeddings,
+    resolve_backend,
+)
 
 app = Server("servicenow-rag")
 
 
 class Bundle:
-    def __init__(self, bundle_dir: Path) -> None:
-        self.bundle_dir = bundle_dir.resolve()
+    def __init__(self, bundle_dir: Path | str, prefer: str = "auto") -> None:
+        self.bundle_dir = Path(bundle_dir).resolve()
         manifest_path = self.bundle_dir / "manifest.json"
         if not manifest_path.is_file():
             raise FileNotFoundError(f"Bundle manifest missing: {manifest_path}")
@@ -48,10 +55,15 @@ class Bundle:
             self.norms = np.load(norms_path)
         else:
             self.norms = np.linalg.norm(self.embeddings, axis=1).astype(np.float32)
-        model_dir = self.bundle_dir / "model"
-        if not (model_dir / "onnx" / "model.onnx").is_file():
-            raise FileNotFoundError(f"Bundle model missing: {model_dir}/onnx/model.onnx")
-        self.embedder = Embedder(model_dir)
+        bundled_model = self.bundle_dir / "model" / "onnx" / "model.onnx"
+        if bundled_model.is_file():
+            model_id: str | Path = self.bundle_dir / "model"
+        else:
+            # Bundle was built with MLX (or the model dir was pruned):
+            # fall back to the canonical HF model id. The ONNX or MLX
+            # backend will resolve it from the appropriate cache.
+            model_id = DEFAULT_MODEL_ID
+        self.embedder = get_embedder(model_id, prefer=prefer)
         self._norms_safe = self.norms.clip(min=1e-9)
 
     def search(
@@ -179,7 +191,7 @@ async def list_tools() -> list[Tool]:
 @app.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     try:
-        bundle = _bundle_cache(ARGS.bundle)
+        bundle = _bundle_cache(ARGS.bundle, ARGS.prefer)
     except FileNotFoundError as e:
         return _result({"error": str(e)})
 
@@ -217,28 +229,44 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     raise ValueError(f"Unknown tool: {name}")
 
 
-def _bundle_cache(bundle_arg: str) -> Bundle:
+def _bundle_cache(bundle_arg: str, prefer: str) -> Bundle:
     if not hasattr(_bundle_cache, "_instance"):
         bundle_path = Path(bundle_arg).expanduser()
         if not bundle_path.is_absolute():
             bundle_path = bundle_path.resolve()
-        _bundle_cache._instance = Bundle(bundle_path)
+        backend, reason = resolve_backend(prefer)
+        print(f"  RAG backend: {backend} ({reason})", file=sys.stderr)
+        _bundle_cache._instance = Bundle(bundle_path, prefer=prefer)
     return _bundle_cache._instance
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="ServiceNow RAG MCP server")
-    p.add_argument("--bundle", required=True, help="Path to a pre-built RAG bundle directory")
+    p = argparse.ArgumentParser(description="ServiceNow Atlas RAG MCP server")
+    p.add_argument(
+        "--bundle",
+        default="./data/rag-bundle",
+        help="Path to a pre-built RAG bundle directory",
+    )
+    p.add_argument(
+        "--prefer",
+        choices=["auto", "apple", "nvidia", "cpu"],
+        default="auto",
+        help="Embedding backend preference: apple=MLX, nvidia=CUDA, cpu=ONNX+CPU, auto=probe",
+    )
     return p.parse_args()
 
 
 ARGS = parse_args()
 
 
-async def _main() -> None:
+async def serve() -> None:
     async with stdio_server() as (read_stream, write_stream):
         await app.run(read_stream, write_stream, app.create_initialization_options())
 
 
+def main() -> None:
+    asyncio.run(serve())
+
+
 if __name__ == "__main__":
-    asyncio.run(_main())
+    main()

@@ -12,9 +12,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "make_bundle.py"
-      - "chunk.py"
-      - "embed.py"
+      - "atlas/**"
       - "pyproject.toml"
       - ".github/workflows/build-bundle.yml"
 
@@ -23,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
-      BUNDLE_DIR: bundle-build
+      BUNDLE_DIR: data/rag-bundle
       BUNDLE_REPO: ${{ github.repository }}
 
     steps:
@@ -46,19 +44,21 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv venv
-          uv pip install -e ".[build]"
+          uv sync --extra build
 
       - name: Build bundle
         run: |
-          uv run make_bundle.py \
+          uv run atlas-build \
             --branch australia \
             --output "$BUNDLE_DIR" \
             --model Xenova/bge-base-en-v1.5
 
       - name: Smoke test
         run: |
-          uv run smoke_test.py
+          git clone --depth 1 -b australia \
+            https://github.com/ServiceNow/ServiceNowDocs.git \
+            data/servicenow-docs/ServiceNowDocs-australia
+          uv run atlas-smoke
 
       - name: Compress bundle
         run: |
@@ -79,7 +79,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.name }}
-          name: "ServiceNow RAG Bundle - ${{ steps.tag.outputs.name }}"
+          name: "ServiceNow Atlas bundle - ${{ steps.tag.outputs.name }}"
           body: |
             Pre-built RAG bundle for the ServiceNow Australia docs release.
 
@@ -88,7 +88,7 @@ jobs:
 
             Install with:
             ```
-            uv run download.py --repo ${{ env.BUNDLE_REPO }} --tag ${{ steps.tag.outputs.name }} --output ~/servicenow-rag-bundle
+            uv run atlas-download --repo ${{ env.BUNDLE_REPO }} --tag ${{ steps.tag.outputs.name }} --output ~/data/rag-bundle
             ```
           files: bundle.tar.gz
           fail_on_unmatched_files: true

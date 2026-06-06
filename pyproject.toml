@@ -1,10 +1,9 @@
 [project]
-name = "servicenow-agent"
-version = "0.2.0"
-description = "Two-MCP-server knowledge layer for ServiceNow development: filesystem + portable RAG."
+name = "servicenow-atlas"
+version = "0.3.0"
+description = "ServiceNow Atlas — local-first AI knowledge layer for ServiceNow development via MCP."
 readme = "README.md"
 requires-python = ">=3.11"
-
 dependencies = [
     "mcp>=1.0",
     "pyyaml>=6.0",
@@ -20,9 +19,29 @@ dependencies = [
 build = [
     "tqdm>=4.66",
 ]
+mlx = [
+    "mlx>=0.20",
+]
+gpu = [
+    "onnxruntime-gpu>=1.18",
+]
 dev = [
     "pytest>=8.0",
 ]
 
-[tool.uv]
-package = false
+[project.scripts]
+atlas-fs = "atlas.fs_server:main"
+atlas-rag = "atlas.rag_server:main"
+atlas-build = "atlas.make_bundle:main"
+atlas-download = "atlas.download:main"
+atlas-backup = "atlas.backup:main"
+atlas-restore = "atlas.restore:main"
+atlas-smoke = "atlas.smoke_test:main"
+atlas-doctor = "atlas.doctor:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["atlas"]

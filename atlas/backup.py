@@ -61,7 +61,7 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def main() -> int:
+def _run() -> int:
     args = parse_args()
     backup_dir = args.backup_dir or (args.bundle / ".backups")
     archive = snapshot(args.bundle, backup_dir)
@@ -70,5 +70,12 @@ def main() -> int:
     return 0
 
 
+def main() -> None:
+    """Script entry point. Calls ``sys.exit(_run())`` so the return
+    code propagates through both ``python -m`` and the console-script
+    entry points defined in ``pyproject.toml``."""
+    sys.exit(_run())
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

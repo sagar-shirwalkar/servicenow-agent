@@ -293,18 +293,26 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="ServiceNow filesystem MCP server")
-    p.add_argument("--repo", default="./ServiceNowDocs-australia", help="Path to ServiceNowDocs clone")
+    p = argparse.ArgumentParser(description="ServiceNow Atlas filesystem MCP server")
+    p.add_argument(
+        "--repo",
+        default="./data/servicenow-docs/ServiceNowDocs-australia",
+        help="Path to ServiceNowDocs clone",
+    )
     return p.parse_args()
 
 
 ARGS = parse_args()
 
 
-async def _main() -> None:
+async def serve() -> None:
     async with stdio_server() as (read_stream, write_stream):
         await app.run(read_stream, write_stream, app.create_initialization_options())
 
 
+def main() -> None:
+    asyncio.run(serve())
+
+
 if __name__ == "__main__":
-    asyncio.run(_main())
+    main()

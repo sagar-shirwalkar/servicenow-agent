@@ -14,11 +14,11 @@ wheels/
 chroma_db/
 chroma.sqlite3
 
-# Auto-downloaded docs source
-ServiceNowDocs-australia/
+# Runtime data (gitignored)
+data/
+!data/.gitkeep
 
-# Pre-built RAG bundle (downloaded or built locally)
-servicenow-rag-bundle/
+# Bundle and snapshot archives
 *.tar.gz
 *.tar.zst
 *.zip

@@ -30,14 +30,20 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
-from chunk import chunk_file
-from embed import DEFAULT_MODEL_ID, Embedder, save_bundle_artifacts
+from .chunk import chunk_file
+from .embed import (
+    DEFAULT_MODEL_ID,
+    Embedder,
+    get_embedder,
+    resolve_backend,
+)
 
 DEFAULT_BRANCH = "australia"
 DEFAULT_REPO_URL = "https://github.com/ServiceNow/ServiceNowDocs.git"
-DEFAULT_LOCAL_PATH = "./ServiceNowDocs-australia"
+DEFAULT_LOCAL_PATH = "./data/servicenow-docs/ServiceNowDocs-australia"
 
 BUNDLE_SCHEMA_VERSION = 1
 
@@ -137,6 +143,35 @@ def stage_model(model_dir: Path, bundle_dir: Path) -> Path:
     return target
 
 
+def save_bundle_artifacts(
+    embeddings: np.ndarray,
+    output_dir: Path,
+    dtype: str = "float16",
+) -> tuple[Path, Path]:
+    """Write embeddings and precomputed norms to disk.
+
+    Float16 halves the on-disk size (~360MB -> ~180MB for 250k
+    chunks) with negligible effect on retrieval quality because
+    cosine similarity is rank-preserving under half precision.
+    Norms are stored separately in float32 for accurate
+    cosine-at-query-time.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if dtype == "float16":
+        emb_path = output_dir / "embeddings.f16.npy"
+        emb_to_save = embeddings.astype(np.float16)
+    elif dtype == "float32":
+        emb_path = output_dir / "embeddings.f32.npy"
+        emb_to_save = embeddings.astype(np.float32)
+    else:
+        raise ValueError(f"Unsupported dtype: {dtype}")
+    np.save(emb_path, emb_to_save)
+    norms = np.linalg.norm(emb_to_save.astype(np.float32), axis=1).astype(np.float32)
+    norms_path = output_dir / "norms.f32.npy"
+    np.save(norms_path, norms)
+    return emb_path, norms_path
+
+
 def sha256_file(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as f:
@@ -152,6 +187,8 @@ def write_manifest(
     source_sha: str,
     chunk_count: int,
     model_id: str,
+    embedding_backend: str = "",
+    embedding_active_provider: str = "",
 ) -> Path:
     manifest = {
         "schema_version": BUNDLE_SCHEMA_VERSION,
@@ -170,6 +207,10 @@ def write_manifest(
             "model_dir": "model/",
         },
     }
+    if embedding_backend:
+        manifest["embedding_backend"] = embedding_backend
+    if embedding_active_provider:
+        manifest["embedding_active_provider"] = embedding_active_provider
     for key, rel in list(manifest["artifacts"].items()):
         if key == "model_dir":
             continue
@@ -190,10 +231,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--model", default=DEFAULT_MODEL_ID, help="HF model id or local path")
     p.add_argument("--limit", type=int, default=0, help="Limit number of files (for smoke tests)")
     p.add_argument("--skip-embed", action="store_true", help="Skip embedding (for chunk-only smoke tests)")
+    p.add_argument(
+        "--prefer",
+        choices=["auto", "apple", "nvidia", "cpu"],
+        default="auto",
+        help="Embedding backend preference: apple=MLX, nvidia=CUDA, cpu=ONNX+CPU, auto=probe",
+    )
     return p.parse_args()
 
 
-def main() -> int:
+def _run() -> int:
     args = parse_args()
     repo_path = ensure_repo(Path(args.repo_path), args.repo_url, args.branch)
     sha = current_sha(repo_path)
@@ -220,20 +267,29 @@ def main() -> int:
         )
         return 0
 
+    backend, reason = resolve_backend(args.prefer)
+    print(f"  Embedding backend: {backend} ({reason})")
     print(f"  Loading model {args.model}...")
-    embedder = Embedder(args.model)
-    print(f"  Active ONNX provider: {embedder.active_provider}")
+    embedder = get_embedder(args.model, prefer=args.prefer)
+    print(f"  Active provider: {embedder.active_provider}")
     embeddings = embedder.embed_with_progress(df["text"].tolist())
 
     emb_path, norms_path = save_bundle_artifacts(embeddings, args.output)
     print(f"  Wrote {emb_path}")
     print(f"  Wrote {norms_path}")
 
-    stage_model(Path(embedder.model_dir), args.output)
+    stage_model(embedder.resolved_dir, args.output)
     print(f"  Staged model files into {args.output / 'model'}")
 
     manifest_path = write_manifest(
-        args.output, args.repo_url, args.branch, sha, len(df), args.model
+        args.output,
+        args.repo_url,
+        args.branch,
+        sha,
+        len(df),
+        args.model,
+        embedding_backend=backend,
+        embedding_active_provider=str(embedder.active_provider),
     )
     print(f"  Wrote {manifest_path}")
 
@@ -244,5 +300,16 @@ def main() -> int:
     return 0
 
 
+def main() -> None:
+    """Script entry point.
+
+    Calls ``sys.exit(_run())`` so the return code propagates through
+    both ``python -m`` and the console-script entry points defined
+    in ``pyproject.toml``. Console scripts do not propagate return
+    values on their own, so the ``sys.exit`` has to live here.
+    """
+    sys.exit(_run())
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

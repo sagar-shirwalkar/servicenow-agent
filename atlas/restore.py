@@ -67,7 +67,7 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def main() -> int:
+def _run() -> int:
     args = parse_args()
     backup_dir = args.backup_dir or (args.bundle / ".backups")
     if args.list:
@@ -78,7 +78,7 @@ def main() -> int:
     if not args.no_safety_snapshot and (args.bundle / "manifest.json").is_file():
         print("  Snapshotting current bundle as a safety net...")
         subprocess.run(
-            [sys.executable, "backup.py", "--bundle", str(args.bundle)],
+            [sys.executable, "-m", "atlas.backup", "--bundle", str(args.bundle)],
             check=True,
         )
 
@@ -91,5 +91,12 @@ def main() -> int:
     return 0
 
 
+def main() -> None:
+    """Script entry point. Calls ``sys.exit(_run())`` so the return
+    code propagates through both ``python -m`` and the console-script
+    entry points defined in ``pyproject.toml``."""
+    sys.exit(_run())
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
