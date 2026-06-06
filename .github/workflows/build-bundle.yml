@@ -48,6 +48,8 @@ jobs:
           restore-keys: hf-bge-base-en-v1.5-
 
       - name: Install dependencies
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN_GH_RO  }}
         run: |
           uv sync --extra build
 
