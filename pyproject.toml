@@ -1,14 +1,47 @@
 [project]
-name = "servicenow-agent"
-version = "0.1.0"
-description = "Add your description here"
+name = "servicenow-atlas"
+version = "0.3.0"
+description = "ServiceNow Atlas — local-first AI knowledge layer for ServiceNow development via MCP."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
-    "chromadb>=1.5.9",
-    "markdown-it-py>=4.2.0",
-    "mcp>=1.27.2",
-    "ollama>=0.6.2",
-    "pydantic>=2.13.4",
-    "unsloth>=2026.5.10",
+    "mcp>=1.0",
+    "pyyaml>=6.0",
+    "pyarrow>=15.0",
+    "numpy>=1.26",
+    "transformers>=4.40",
+    "tokenizers>=0.19",
+    "onnxruntime>=1.18",
+    "pandas>=2.2",
 ]
+
+[project.optional-dependencies]
+build = [
+    "tqdm>=4.66",
+]
+mlx = [
+    "mlx>=0.20",
+]
+gpu = [
+    "onnxruntime-gpu>=1.18",
+]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+atlas-fs = "atlas.fs_server:main"
+atlas-rag = "atlas.rag_server:main"
+atlas-build = "atlas.make_bundle:main"
+atlas-download = "atlas.download:main"
+atlas-backup = "atlas.backup:main"
+atlas-restore = "atlas.restore:main"
+atlas-smoke = "atlas.smoke_test:main"
+atlas-doctor = "atlas.doctor:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["atlas"]

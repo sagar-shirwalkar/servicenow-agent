@@ -1,0 +1,99 @@
+# Monthly cron + manual dispatch + push-to-main. Runs `atlas-build`
+# on a Linux runner, smoke-tests, and publishes a new GitHub Release
+# with the bundle tarball. The release tag is `australia-YYYYMMDD`
+# so users can pin to a specific ServiceNow release family.
+
+name: build-bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (leave empty for auto: 'australia-YYYYMMDD')"
+        required: false
+        default: ""
+  schedule:
+    - cron: "0 6 1 * *"
+  push:
+    branches: [main]
+    paths:
+      - "atlas/**"
+      - "pyproject.toml"
+      - ".github/workflows/build-bundle.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      BUNDLE_DIR: data/rag-bundle
+      BUNDLE_REPO: ${{ github.repository }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.5.x"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Cache HF model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-bge-base-en-v1.5-v1
+          restore-keys: hf-bge-base-en-v1.5-
+
+      - name: Install dependencies
+        run: |
+          uv sync --extra build
+
+      - name: Build bundle
+        run: |
+          uv run atlas-build \
+            --branch australia \
+            --output "$BUNDLE_DIR" \
+            --model Xenova/bge-base-en-v1.5
+
+      - name: Smoke test
+        run: |
+          git clone --depth 1 -b australia \
+            https://github.com/ServiceNow/ServiceNowDocs.git \
+            data/servicenow-docs/ServiceNowDocs-australia
+          uv run atlas-smoke
+
+      - name: Compress bundle
+        run: |
+          tar -czf bundle.tar.gz -C "$BUNDLE_DIR" .
+          ls -lh bundle.tar.gz
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            TS=$(date -u +%Y%m%d)
+            echo "name=australia-${TS}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: "ServiceNow Atlas bundle - ${{ steps.tag.outputs.name }}"
+          body: |
+            Pre-built RAG bundle for the ServiceNow Australia docs release.
+
+            Source SHA: see `manifest.json` inside the bundle.
+            Embedding model: Xenova/bge-base-en-v1.5 (ONNX, 768-dim).
+
+            Install with:
+            ```
+            uv run atlas-download --repo ${{ env.BUNDLE_REPO }} --tag ${{ steps.tag.outputs.name }} --output ~/data/rag-bundle
+            ```
+          files: bundle.tar.gz
+          fail_on_unmatched_files: true
