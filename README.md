@@ -194,6 +194,21 @@ default. The `atlas-doctor` command will tell you which backends
 are available and which one will be used by default — run it any
 time you want to know what's actually wired up.
 
+> **Re-applying extras on subsequent `uv sync`.** `uv sync`
+> synchronizes the venv to match the lockfile plus whichever extras
+> you specify on the command line. If you later run plain
+> `uv sync` (e.g. to pick up a dep change), the MLX / GPU packages
+> will be **silently removed** because they were installed under
+> `--extra mlx` / `--extra gpu` and aren't in the default set. To
+> keep them, re-run with the same flags:
+>
+> ```bash
+> uv sync --extra mlx --extra gpu   # whatever you had before
+> ```
+>
+> After a sync, `atlas-doctor` will tell you immediately if a
+> previously-installed backend is now MISS.
+
 ### Backend selection
 
 The RAG server picks an inference backend at startup, in this order:
