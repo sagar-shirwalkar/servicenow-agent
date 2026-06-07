@@ -370,6 +370,85 @@ uv run atlas-rag --help
 
 ## 5. For maintainers: building and releasing
 
+### 5.0 First-time build walkthrough
+
+A guided path for building the bundle on your own machine, from a
+fresh `uv sync` to a working bundle your IDE can query. If you've
+done this before and just want the command, skip to §5.1.
+
+**Preflight.** Confirm the embedding backend you expect is actually
+available:
+
+```bash
+uv sync --extra mlx        # or `--extra gpu` on Linux + NVIDIA
+uv run atlas-doctor        # should report: MLX OK, selected: mlx
+```
+
+If doctor says `MLX MISS` after a sync, the optional extras were
+stripped (see §4.2) — re-run with the same flags you used originally.
+
+**Smoke build (2 minutes).** Test the pipeline with a tiny bundle
+before committing to a full build:
+
+```bash
+uv run atlas-build \
+  --limit 100 \
+  --output /tmp/atlas-smoke \
+  --prefer apple
+```
+
+This uses your existing `data/servicenow-docs/` clone, walks the
+first 100 files, chunks them, embeds them. With MLX on Apple
+Silicon the embedding step is ~1-2 seconds; with ONNX+CPU ~30
+seconds. Free to interrupt with Ctrl-C; the next run redoes the work.
+
+**Sanity-check the smoke bundle:**
+
+```bash
+.venv/bin/python -c "
+from atlas.rag_server import Bundle
+b = Bundle('/tmp/atlas-smoke', prefer='apple')
+hits = b.search('ServiceNow incident handling', top_k=3)
+for h in hits:
+    print(f'  {h[\"score\"]:.3f}  {h[\"file\"]} :: {h[\"heading\"]}')
+"
+```
+
+Using `.venv/bin/python` directly avoids the ~300 ms `uv run`
+overhead. For pure JSON inspection of the manifest, `jq` is the
+faster tool — see §10 for recipes.
+
+Plausible scores are 0.5-0.7 for short queries, higher for exact
+matches. If you see a tokenizer error, your venv is missing
+`sentencepiece` (see §9).
+
+**Full build (15-30 minutes):**
+
+```bash
+uv run atlas-build \
+  --output ./data/rag-bundle \
+  --prefer apple
+```
+
+The script `git fetch`es your existing `data/servicenow-docs/` clone
+(no re-download), walks every `.md` file, and writes the bundle to
+`./data/rag-bundle/`. With MLX: ~10-15 min pure embedding. With
+ONNX+CPU: ~45-60 min. Total output: ~150-200 MB on disk.
+
+**Verify and connect.** After the build, check the artifacts and
+connect your IDE:
+
+```bash
+ls -lh data/rag-bundle/                # chunks.parquet, embeddings.f16.npy, norms.f32.npy, model/, manifest.json
+jq . data/rag-bundle/manifest.json | head -20
+```
+
+The manifest records the source SHA, chunk count, embedding model,
+and which backend was used to build. Restart your IDE so it picks
+up the new bundle path; see §4.5 for Zed and opencode config.
+
+---
+
 ### 5.1 Local build
 
 ```bash
@@ -698,6 +777,34 @@ project itself, not just its dependencies. This installs the
 ---
 
 ## 10. Development
+
+### Useful shell recipes
+
+These come up often. None of them need `uv run`:
+
+```bash
+# Pretty-print the bundle manifest (no `cat`, no `uv run` overhead)
+jq . data/rag-bundle/manifest.json
+
+# If you don't have jq, fall back to stdlib (slower, but works)
+.venv/bin/python -m json.tool data/rag-bundle/manifest.json | head -20
+
+# Load a bundle in Python without going through `uv run`
+.venv/bin/python -c "
+from atlas.rag_server import Bundle
+b = Bundle('data/rag-bundle', prefer='apple')
+for h in b.search('change request', top_k=3):
+    print(f'{h[\"score\"]:.3f}  {h[\"file\"]}')
+"
+```
+
+Install `jq` once (`brew install jq` on macOS, `apt install jq` on
+Linux) and the first command is the one you'll reach for every time.
+
+The pattern is: once `uv sync` is done, the venv's Python at
+`.venv/bin/python` starts in ~30 ms with no project detection.
+Reserve `uv run` for entry points (`atlas-build`, `atlas-rag`, ...)
+and scripts that genuinely need the project's full import path.
 
 ### Run the smoke test
 
